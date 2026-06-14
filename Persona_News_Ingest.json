@@ -1,0 +1,500 @@
+{
+  "name": "Persona_News_Ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-split-users",
+      "name": "One User at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        672,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'ok', timestamp: new Date().toISOString() } }];"
+      },
+      "id": "node-done",
+      "name": "Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const user = $input.first().json;\nconst topics = user.interests || [];\nif (topics.length === 0) return [];\nreturn topics.map(topic => ({ json: { topic: topic.toLowerCase().trim(), user_id: user.id, user_email: user.email } }));"
+      },
+      "id": "node-expand-topics",
+      "name": "Expand User Topics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-split-topics",
+      "name": "One Topic at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'ok', timestamp: new Date().toISOString() } }];"
+      },
+      "id": "node-topics-done",
+      "name": "Topics Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "=Topic: {{ $json.topic }}",
+        "options": {
+          "systemMessage": "You are a NewsAPI search query optimizer.\n\nConvert the given topic into a short English search query for NewsAPI.\n\nRules:\n- Output ONLY the search query, nothing else (no punctuation, no quotes, no explanation)\n- English only, no matter the input language\n- Preserve ALL meaningful words from the topic — do NOT drop words\n- If the topic is already in English and meaningful, return it as-is\n- Translate non-English topics to their full English equivalent\n- Use 1 to 3 words maximum\n\nExamples:\n- 'technologie' → 'technology'\n- 'voitures électriques' → 'electric vehicles'\n- 'intelligence artificielle' → 'artificial intelligence'\n- 'politique française' → 'french politics'\n- 'bourse' → 'stock market'\n- 'réchauffement climatique' → 'climate change'\n- 'crypto' → 'crypto'\n- 'santé mentale' → 'mental health'\n- 'F1' → 'formula 1'\n- 'aquariophilie' → 'aquarium'\n- 'metal music' → 'metal music'\n- 'jazz music' → 'jazz music'\n\nOutput ONLY the query, nothing else."
+        }
+      },
+      "id": "node-agent",
+      "name": "AI Agent – Build Query",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1344,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-mistral",
+      "name": "Mistral Cloud Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        1416,
+        536
+      ],
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "personaMistral01",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const topic = $('One Topic at a Time').item.json.topic;\nconst user_id = $('One Topic at a Time').item.json.user_id;\nconst user_email = $('One Topic at a Time').item.json.user_email;\nconst raw = $json?.output?.trim() || '';\nconst cleaned = raw.replace(/^\"|\"$/g, '').trim();\n\n// Safety net: fall back to topic if AI dropped any word from the original topic\nconst topicWords = topic.toLowerCase().split(/\\s+/);\nconst queryWords = cleaned.toLowerCase().split(/\\s+/);\nconst isIncomplete = !cleaned || topicWords.some(w => !queryWords.includes(w));\n\nconst query = isIncomplete ? topic : cleaned;\nreturn { json: { topic, query, user_id, user_email } };"
+      },
+      "id": "node-extract-query",
+      "name": "Extract Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/everything",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=\"{{ $json.query }}\""
+            },
+            {
+              "name": "language",
+              "value": "en"
+            },
+            {
+              "name": "pageSize",
+              "value": "1"
+            },
+            {
+              "name": "apiKey",
+              "value": "={{ $env.NEWS_API_KEY }}"
+            },
+            {
+              "name": "sortBy",
+              "value": "publishedAt"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-newsapi",
+      "name": "Fetch NewsAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1920,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const topic = $('One Topic at a Time').item.json.topic;\nconst user_id = $('One Topic at a Time').item.json.user_id;\nconst user_email = $('One Topic at a Time').item.json.user_email;\nconst articles = $json?.articles || [];\n\n// Only keep the first (and only) valid article\nconst a = articles.find(a => a.url && a.title);\n\nif (!a) {\n  return { json: { _skip: true, topic, user_id, user_email, reason: 'no articles' } };\n}\n\nreturn {\n  json: {\n    _skip: false,\n    source: `newsapi:${(a.source?.name || 'unknown').toLowerCase().replace(/\\s+/g, '-')}`,\n    source_id: a.source?.id || null,\n    title: a.title,\n    url: a.url,\n    summary: a.description || null,\n    content: a.content || null,\n    published_at: a.publishedAt || null,\n    tags: [topic],\n    user_id,\n    user_email\n  }\n};"
+      },
+      "id": "node-normalize",
+      "name": "Normalize Article",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._skip }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "id": "a4bca6b1-c012-493d-9089-5e2bf0e272ad"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-skip-check",
+      "name": "Has Articles?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "nielsen.combebracciale@gmail.com",
+        "toEmail": "={{ $json.user_email }}",
+        "subject": "=Persona Digest: {{ $json.title }}",
+        "emailFormat": "html",
+        "html": "=<!DOCTYPE html>\n<html>\n\n<head>\n  <style>\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;\n      background-color: #f9fafb;\n      margin: 0;\n      padding: 0;\n      -webkit-font-smoothing: antialiased;\n    }\n\n    .wrapper {\n      background-color: #f9fafb;\n      padding: 40px 20px;\n    }\n\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #ffffff;\n      border-radius: 12px;\n      overflow: hidden;\n      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);\n      border: 1px solid #f3f4f6;\n    }\n\n    .header {\n      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);\n      padding: 30px;\n      text-align: center;\n      color: #ffffff;\n    }\n\n    .header h1 {\n      margin: 0;\n      font-size: 24px;\n      font-weight: 700;\n    }\n\n    .meta-row {\n      margin-top: 10px;\n    }\n\n    .tag {\n      display: inline-block;\n      background-color: rgba(255, 255, 255, 0.2);\n      color: #ffffff;\n      font-size: 11px;\n      font-weight: 600;\n      padding: 3px 10px;\n      border-radius: 9999px;\n      text-transform: uppercase;\n    }\n\n    .date {\n      color: rgba(255, 255, 255, 0.8);\n      font-size: 12px;\n      margin-left: 10px;\n    }\n\n    .content {\n      padding: 30px;\n    }\n\n    .title {\n      font-size: 20px;\n      font-weight: 700;\n      color: #111827;\n      margin: 0 0 16px 0;\n    }\n\n    .summary {\n      font-size: 15px;\n      color: #374151;\n      line-height: 1.6;\n      font-weight: 600;\n      margin: 0 0 16px 0;\n    }\n\n    .body-content {\n      font-size: 14px;\n      color: #6b7280;\n      line-height: 1.6;\n      margin: 0 0 24px 0;\n    }\n\n    .button-container {\n      margin-bottom: 10px;\n    }\n\n    .btn {\n      display: inline-block;\n      background-color: #4f46e5;\n      color: #ffffff !important;\n      text-decoration: none;\n      font-weight: 600;\n      padding: 12px 24px;\n      border-radius: 6px;\n      font-size: 15px;\n    }\n\n    .footer {\n      background-color: #f9fafb;\n      padding: 20px;\n      border-top: 1px solid #f3f4f6;\n      text-align: center;\n      font-size: 11px;\n      color: #9ca3af;\n    }\n  </style>\n</head>\n\n<body>\n  <div class=\"wrapper\">\n    <div class=\"container\">\n      <div class=\"header\">\n        <h1>Persona Digest</h1>\n        <div class=\"meta-row\">\n          <span class=\"tag\">{{ $json.tags[0] }}</span>\n          <span class=\"date\">{{ new Date($json.published_at).toLocaleDateString('en-US', { dateStyle: 'medium' })\n            }}</span>\n        </div>\n      </div>\n      <div class=\"content\">\n        <h2 class=\"title\">{{ $json.title }}</h2>\n        <p class=\"summary\">{{ $json.summary }}</p>\n        <p class=\"body-content\">{{ $json.content }}</p>\n        <div class=\"button-container\">\n          <a href=\"{{ $json.url }}\" class=\"btn\" target=\"_blank\">Read Full Article</a>\n        </div>\n      </div>\n      <div class=\"footer\">\n        You are receiving this because of your interest in <strong>{{ $json.tags[0] }}</strong>.<br>\n        Persona News Delivery • Custom AI Assistant\n      </div>\n    </div>\n  </div>\n</body>\n\n</html>",
+        "options": {}
+      },
+      "id": "node-send-mail",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        240
+      ],
+      "webhookId": "7671180c-e082-453c-8383-316ae9092a19",
+      "credentials": {
+        "smtp": {
+          "id": "personaSMTPLocal",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "id": "node-back-topics",
+      "name": "Back to Topics Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2816,
+        436
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "id": "node-back-users",
+      "name": "Back to Users Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "users_to_schedule",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        312
+      ],
+      "id": "e5c0d3ae-5aea-492b-a9f6-b49d51692d54",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "One User at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One User at a Time": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Expand User Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand User Topics": {
+      "main": [
+        [
+          {
+            "node": "One Topic at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Topic at a Time": {
+      "main": [
+        [
+          {
+            "node": "Topics Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent – Build Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Topics Done": {
+      "main": [
+        [
+          {
+            "node": "Back to Users Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Back to Users Loop": {
+      "main": [
+        [
+          {
+            "node": "One User at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent – Build Query": {
+      "main": [
+        [
+          {
+            "node": "Extract Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent – Build Query",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Query": {
+      "main": [
+        [
+          {
+            "node": "Fetch NewsAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch NewsAPI": {
+      "main": [
+        [
+          {
+            "node": "Normalize Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Article": {
+      "main": [
+        [
+          {
+            "node": "Has Articles?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Articles?": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Back to Topics Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Back to Topics Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Back to Topics Loop": {
+      "main": [
+        [
+          {
+            "node": "One Topic at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "509ebf2a-cc2b-4d96-841e-244b93288074",
+  "meta": {
+    "instanceId": "f462d808a08fd56aa2589fbcdc590d51ed84af5ec6a0f00a6091b51d779c725a",
+    "templateCredsSetupCompleted": true
+  },
+  "id": "wQFRKBCFdytsY9q0",
+  "tags": []
+}

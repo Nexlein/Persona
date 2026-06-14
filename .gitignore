@@ -1,0 +1,10 @@
+# Secrets — never commit these
+.env
+credentials.json
+
+# Editor & local files
+*.local.json
+.vscode/
+*.pdf
+key-mistral
+_*

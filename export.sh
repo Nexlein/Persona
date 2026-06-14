@@ -1,0 +1,1 @@
+docker compose exec n8n n8n export:workflow --backup --output=/backup/
