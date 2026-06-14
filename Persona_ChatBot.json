@@ -1,0 +1,452 @@
+{
+  "name": "Persona_ChatBot",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        -704
+      ],
+      "id": "e69dec2d-8cfe-4a26-b5a8-03862e7060bb",
+      "name": "When chat message received",
+      "webhookId": "917ff650-2dc6-4e7d-9128-7f673c219470"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are \"Persona\", a personalized AI newsletter assistant. Your job is to help users manage their newsletter preferences.\n    CRITICAL RULES:\n    - Never call the same tool twice in a row.\n    - You MUST wait for the user to reply before moving to the next phase! Do NOT skip steps!\n\n    ## Phase 1: First Message\n    When the user first talks to you:\n    1. Call `check_session` to see if they are logged in.\n    2. If `user_id` exists \u2192 They are logged in! Skip to Phase 4.\n    3. If not \u2192 Ask for their email address AND their password. Wait for their reply. STOP here.\n\n    ## Phase 2: User Provides Email + Password\n    When the user gives their email and password:\n    1. Call `find_user` with their email.\n    2a. If user EXISTS \u2192 Call `verify_password` passing a JSON string like {\"password\":\"<plain password>\",\"stored_hash\":\"<password_hash value from find_user result>\"}. If it returns match=true, memorize the user `id` and call `create_session`. If match=false, tell them the password is wrong and stop.\n    2b. If user NOT FOUND \u2192 Call `hash_password` with their plain-text password to get the hash, then call `register_user` with their email AND the password_hash.\n    3. After successful login or registration, memorize the user `id`, call `create_session`, welcome them, and ask about newsletter topics (interests, timezone, hour). STOP here.\n\n    ## Phase 4: Logged In Flow (Settings)\n    When a logged-in user asks to change their newsletter settings:\n    1. Call `get_user_profile` to check their current settings.\n    2. If they are updating anything, call `update_user_profile` and provide ALL parameters."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        528,
+        -704
+      ],
+      "id": "734ed7f8-07d4-473f-a288-73f6e5c6d1dc",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        16,
+        -480
+      ],
+      "id": "9eaa443d-68d4-4263-b07d-7434fddea2bd",
+      "name": "Mistral Cloud Chat Model",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "personaMistral01",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionKey": "={{ $('When chat message received').item.json.sessionId }}",
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [
+        144,
+        -480
+      ],
+      "id": "fbafa746-5e22-4a0d-bf78-59a0e0328703",
+      "name": "Window Buffer Memory"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Checks if the current chat session is authenticated. Returns the session row with user_id and expires_at if logged in, or empty if not. Takes NO arguments.",
+        "operation": "get",
+        "tableId": "chat_sessions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "session_id",
+              "keyValue": "={{ $('When chat message received').item.json.sessionId }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -480
+      ],
+      "id": "d7f96df8-7188-4170-9630-64bda19890f9",
+      "name": "check_session",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Looks up a user by their email address. Returns the user row (id, email, interests, schedule_hour, etc.) if found, or empty if not. You MUST provide the argument: 'email' (string).",
+        "operation": "get",
+        "tableId": "users",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "keyValue": "={{ $fromAI('email', 'The email address to look up', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -480
+      ],
+      "id": "f1a2b3c4-0001-4aaa-bbbb-ccccddddeeee",
+      "name": "find_user",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Creates a new user account with the given email. Returns the created user row including their id. Only call this if find_user returned no result. You MUST provide the argument: 'email' (string).",
+        "tableId": "users",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $fromAI(\"fieldValues0_Field_Value\", \"The user email\", \"string\") }}"
+            },
+            {
+              "fieldId": "password_hash",
+              "fieldValue": "={{ $fromAI(\"fieldValues1_Field_Value\", \"The SHA-256 hex hash of the user password\", \"string\") }}"
+            },
+            {
+              "fieldId": "consent_given_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        528,
+        -480
+      ],
+      "id": "f1a2b3c4-0002-4aaa-bbbb-ccccddddeeee",
+      "name": "register_user",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool IMMEDIATELY after the user types the correct 6-digit verification code to log them in! You MUST provide the 'user_id' you got from the register_user tool.",
+        "tableId": "chat_sessions",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "session_id",
+              "fieldValue": "={{ $('When chat message received').item.json.sessionId }}"
+            },
+            {
+              "fieldId": "user_id",
+              "fieldValue": "={{ $fromAI('user_id', 'The user UUID', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        656,
+        -480
+      ],
+      "id": "f1a2b3c4-0003-4aaa-bbbb-ccccddddeeee",
+      "name": "create_session",
+      "notesInFlow": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Gets a user's full profile by their user_id (UUID). Returns email, interests, schedule_hour, schedule_timezone, and custom_prompt. You MUST provide the argument: 'user_id' (string).",
+        "operation": "get",
+        "tableId": "users",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $fromAI('user_id', 'The user UUID', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        784,
+        -480
+      ],
+      "id": "af768d26-d799-4228-a0e7-f0d59fdd56b1",
+      "name": "get_user_profile",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Updates a user's newsletter preferences. You MUST provide ALL four fields every time (use current values for unchanged fields). Arguments you MUST provide: 'user_id' (string), 'interests' (JSON array string like \"[\\\"AI\\\",\\\"Tech\\\"]\"), 'schedule_hour' (number 0-23), 'schedule_timezone' (string), 'custom_prompt' (string).",
+        "operation": "update",
+        "tableId": "users",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('user_id', 'The user UUID', 'string') }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "interests",
+              "fieldValue": "={{ (() => { const val = $fromAI('interests', 'JSON array string', 'string'); return typeof val === 'string' ? JSON.parse(val) : val; })() }}"
+            },
+            {
+              "fieldId": "schedule_hour",
+              "fieldValue": "={{ $fromAI('schedule_hour', 'Hour 0-23', 'number') }}"
+            },
+            {
+              "fieldId": "schedule_timezone",
+              "fieldValue": "={{ $fromAI('schedule_timezone', 'Timezone like Europe/Paris', 'string') }}"
+            },
+            {
+              "fieldId": "custom_prompt",
+              "fieldValue": "={{ $fromAI('custom_prompt', 'Custom prompt text', 'string') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        912,
+        -480
+      ],
+      "id": "8dac9adb-4b27-4059-b8b6-b3d6f578a983",
+      "name": "update_user_profile",
+      "credentials": {
+        "supabaseApi": {
+          "id": "personaSupabase1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "hash_password",
+        "description": "Hashes a plain-text password using SHA-256. Returns { password_hash: string }. You MUST provide: 'password' (string).",
+        "language": "javaScript",
+        "jsCode": "let password;\ntry { password = JSON.parse(query).password; } catch(e) { password = query; }\nif (!password) throw new Error('password is required');\nfunction sha256(str){function rr(v,a){return(v>>>a)|(v<<(32-a))}const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const b=[];for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);if(c<128)b.push(c);else if(c<2048){b.push((c>>6)|192);b.push((c&63)|128);}else{b.push((c>>12)|224);b.push(((c>>6)&63)|128);b.push((c&63)|128);}}const bl=b.length*8;b.push(0x80);while(b.length%64!==56)b.push(0);for(let i=7;i>=0;i--)b.push((bl/Math.pow(2,i*8))&255);for(let i=0;i<b.length;i+=64){const W=[];for(let j=0;j<16;j++)W[j]=(b[i+j*4]<<24)|(b[i+j*4+1]<<16)|(b[i+j*4+2]<<8)|b[i+j*4+3];for(let j=16;j<64;j++){const s0=rr(W[j-15],7)^rr(W[j-15],18)^(W[j-15]>>>3);const s1=rr(W[j-2],17)^rr(W[j-2],19)^(W[j-2]>>>10);W[j]=(W[j-16]+s0+W[j-7]+s1)|0;}let[a,c2,d,e,f,g,h,hh]=H;let aa=a,bb=c2,cc=d,dd=e,ee=f,ff=g,gg=h,ghh=hh;for(let j=0;j<64;j++){const S1=rr(ee,6)^rr(ee,11)^rr(ee,25);const ch=(ee&ff)^(~ee&gg);const t1=(ghh+S1+ch+K[j]+W[j])|0;const S0=rr(aa,2)^rr(aa,13)^rr(aa,22);const maj=(aa&bb)^(aa&cc)^(bb&cc);const t2=(S0+maj)|0;ghh=gg;gg=ff;ff=ee;ee=(dd+t1)|0;dd=cc;cc=bb;bb=aa;aa=(t1+t2)|0;}H=[(H[0]+aa)|0,(H[1]+bb)|0,(H[2]+cc)|0,(H[3]+dd)|0,(H[4]+ee)|0,(H[5]+ff)|0,(H[6]+gg)|0,(H[7]+ghh)|0];}return H.map(v=>('00000000'+(v>>>0).toString(16)).slice(-8)).join('');}\nreturn JSON.stringify({ password_hash: sha256(password) });"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -480
+      ],
+      "id": "f1a2b3c4-0010-4aaa-bbbb-ccccddddeeee",
+      "name": "hash_password"
+    },
+    {
+      "parameters": {
+        "name": "verify_password",
+        "description": "Verifies a plain-text password against a stored SHA-256 hash. Returns { match: true } or { match: false }. Input MUST be a JSON string: {\"password\":\"<plain text password>\",\"stored_hash\":\"<password_hash from find_user result>\"}. Both fields are required.",
+        "language": "javaScript",
+        "jsCode": "let parsed;\ntry { parsed = JSON.parse(query); } catch(e) { return JSON.stringify({ match: false, error: 'Must pass JSON: {password, stored_hash}' }); }\nconst { password, stored_hash } = parsed;\nif (!password || !stored_hash) return JSON.stringify({ match: false, error: 'Both password and stored_hash required' });\nfunction sha256(str){function rr(v,a){return(v>>>a)|(v<<(32-a))}const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const b=[];for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);if(c<128)b.push(c);else if(c<2048){b.push((c>>6)|192);b.push((c&63)|128);}else{b.push((c>>12)|224);b.push(((c>>6)&63)|128);b.push((c&63)|128);}}const bl=b.length*8;b.push(0x80);while(b.length%64!==56)b.push(0);for(let i=7;i>=0;i--)b.push((bl/Math.pow(2,i*8))&255);for(let i=0;i<b.length;i+=64){const W=[];for(let j=0;j<16;j++)W[j]=(b[i+j*4]<<24)|(b[i+j*4+1]<<16)|(b[i+j*4+2]<<8)|b[i+j*4+3];for(let j=16;j<64;j++){const s0=rr(W[j-15],7)^rr(W[j-15],18)^(W[j-15]>>>3);const s1=rr(W[j-2],17)^rr(W[j-2],19)^(W[j-2]>>>10);W[j]=(W[j-16]+s0+W[j-7]+s1)|0;}let[a,c2,d,e,f,g,h,hh]=H;let aa=a,bb=c2,cc=d,dd=e,ee=f,ff=g,gg=h,ghh=hh;for(let j=0;j<64;j++){const S1=rr(ee,6)^rr(ee,11)^rr(ee,25);const ch=(ee&ff)^(~ee&gg);const t1=(ghh+S1+ch+K[j]+W[j])|0;const S0=rr(aa,2)^rr(aa,13)^rr(aa,22);const maj=(aa&bb)^(aa&cc)^(bb&cc);const t2=(S0+maj)|0;ghh=gg;gg=ff;ff=ee;ee=(dd+t1)|0;dd=cc;cc=bb;bb=aa;aa=(t1+t2)|0;}H=[(H[0]+aa)|0,(H[1]+bb)|0,(H[2]+cc)|0,(H[3]+dd)|0,(H[4]+ee)|0,(H[5]+ff)|0,(H[6]+gg)|0,(H[7]+ghh)|0];}return H.map(v=>('00000000'+(v>>>0).toString(16)).slice(-8)).join('');}\nreturn JSON.stringify({ match: sha256(password) === stored_hash });"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        -480
+      ],
+      "id": "f1a2b3c4-0011-4aaa-bbbb-ccccddddeeee",
+      "name": "verify_password"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_session": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find_user": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "register_user": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_session": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_user_profile": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_user_profile": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hash_password": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verify_password": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9bc69277-13cc-4005-bc34-f308faeddf38",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f462d808a08fd56aa2589fbcdc590d51ed84af5ec6a0f00a6091b51d779c725a"
+  },
+  "id": "gOA2YIfLeqT5OEtu",
+  "tags": []
+}

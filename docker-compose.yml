@@ -1,0 +1,36 @@
+volumes:
+  n8n_data:
+
+services:
+  # ─── N8N ───
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: always
+    network_mode: "host"
+    ports:
+      - "5678:5678"
+    environment:
+      # Core
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      NODE_ENV: production
+      WEBHOOK_URL: http://localhost:5678
+      GENERIC_TIMEZONE: Europe/Paris
+
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_ALLOW_ENV_VARIABLES: "true"
+      N8N_EXPRESSIONS_ALLOWED_ENV_VARS: "SUPABASE_URL,SUPABASE_KEY,MISTRAL_KEY,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_SECURE,NEWS_API_KEY"
+      N8N_SECURE_COOKIE: "false"
+
+      # News API Config
+      NEWS_API_KEY: ${NEWS_API_KEY}
+
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 168
+      N8N_PAYLOAD_SIZE_MAX: 16
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - .:/backup
