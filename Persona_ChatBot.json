@@ -167,7 +167,7 @@
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "Use this tool IMMEDIATELY after the user types the correct 6-digit verification code to log them in! You MUST provide the 'user_id' you got from the register_user tool.",
+        "toolDescription": "Use this tool IMMEDIATELY after a successful login (verify_password returned match=true) or registration to log the user in! You MUST provide the 'user_id' you got from find_user or register_user.",
         "tableId": "chat_sessions",
         "fieldsUi": {
           "fieldValues": [

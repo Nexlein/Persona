@@ -224,7 +224,7 @@
     },
     {
       "parameters": {
-        "fromEmail": "nielsen.combebracciale@gmail.com",
+        "fromEmail": "={{ $env.SMTP_USER }}",
         "toEmail": "={{ $json.user_email }}",
         "subject": "=Persona Digest: {{ $json.title }}",
         "emailFormat": "html",
