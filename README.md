@@ -20,7 +20,7 @@ The system consists of two core workflows:
 ### 2. Persona ChatBot (`Persona_ChatBot.json`)
 
 * An interactive AI-driven chatbot allowing users to:
-  * Log in with their email and password (passwords are stored as SHA-256 hashes in Supabase).
+  * Log in with their email and password (passwords are stored in Supabase as salted scrypt hashes, with a random salt per user, and checked with a constant-time comparison).
   * Register a new account when the email is unknown.
   * Set or update their newsletter topics, delivery times, and timezones once logged in (chat sessions are stored in Supabase).
 
@@ -94,6 +94,7 @@ SMTP_SECURE=true
 2. Open **supabase-setup.sql** from this project.
 3. Copy the entire file, paste it into a new query in Supabase, and click **Run**.
    * *This automatically creates the tables, indexes, RLS, and the `users_to_schedule` database view.*
+   * *Upgrading a database created before salted hashes: run `ALTER TABLE users ALTER COLUMN password_hash TYPE TEXT;`. Old SHA-256 hashes are no longer accepted, so those users need a new password hash.*
 
 ---
 
