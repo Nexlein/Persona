@@ -10,7 +10,7 @@ CREATE TABLE users (
     consent_given_at   TIMESTAMPTZ,         -- GDPR: consent timestamp
     created_at         TIMESTAMPTZ DEFAULT now(),
     updated_at         TIMESTAMPTZ DEFAULT now(),
-    password_hash      VARCHAR(64),          -- SHA-256 hex of password
+    password_hash      TEXT,                 -- salted scrypt: scrypt$<salt>$<hash>
     deleted_at         TIMESTAMPTZ          -- soft delete (GDPR-friendly)
 );
 

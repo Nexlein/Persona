@@ -23,6 +23,8 @@ services:
       N8N_ALLOW_ENV_VARIABLES: "true"
       N8N_EXPRESSIONS_ALLOWED_ENV_VARS: "SUPABASE_URL,SUPABASE_KEY,MISTRAL_KEY,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_SECURE,NEWS_API_KEY"
       N8N_SECURE_COOKIE: "false"
+      # Lets the chatbot Code tools require("crypto") for password hashing
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
 
       # News API Config
       NEWS_API_KEY: ${NEWS_API_KEY}
