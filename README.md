@@ -15,14 +15,14 @@ The system consists of two core workflows:
 * **Timezone-Aware Trigger**: Runs every hour to check the database for users whose scheduled delivery hour matches the current hour in their local timezone.
 * **Topic Extraction & AI Expansion**: Takes each user's interests (e.g., "artificial intelligence", "tech startups") and uses **Mistral AI** to generate optimized, english-translated keywords for NewsAPI.
 * **News Fetching**: Queries NewsAPI for the latest articles on those expanded topics.
-* **Premium HTML Email Digest**: Normalizes the articles, formats them into a beautiful, mobile-responsive HTML digest, and emails it directly to the user using your SMTP server (e.g., Gmail).
+* **Premium HTML Email Digest**: Normalizes the articles, formats them into a beautiful, mobile-responsive HTML digest, and emails it directly to the user using your SMTP server (e.g., Gmail). The sender address is read from `SMTP_USER` in `.env` (`{{ $env.SMTP_USER }}` in the **Send Email** node).
 
 ### 2. Persona ChatBot (`Persona_ChatBot.json`)
 
 * An interactive AI-driven chatbot allowing users to:
-  * Log in securely with their email.
-  * Verify their account using a 6-digit email confirmation code.
-  * Register new accounts and set or update their newsletter topics, delivery times, and timezones.
+  * Log in with their email and password (passwords are stored as SHA-256 hashes in Supabase).
+  * Register a new account when the email is unknown.
+  * Set or update their newsletter topics, delivery times, and timezones once logged in (chat sessions are stored in Supabase).
 
 ---
 
@@ -30,9 +30,10 @@ The system consists of two core workflows:
 
 Setting up n8n workflows on a new machine usually requires manually creating credentials, copying IDs, and re-linking nodes. Persona automates all of this:
 
-* **`credentials.json`**: A template containing the structural definitions for the **Supabase**, **Mistral**, and **SMTP** credentials. Instead of storing actual private keys, it contains expressions (e.g., `{{$env.SUPABASE_URL}}`) referencing the Docker environment.
-* **`update_credentials.py`**: A python script that reads your `.env` configuration file and dynamically updates the credential IDs inside both the workflow JSON files and the `credentials.json` template to keep them aligned.
-* **`launch.sh`**: The one-click entry point. It runs the credentials updater, spins up the Docker containers, automatically imports your credentials template, and imports the workflows into n8n.
+* **`update_credentials.py`**: A python script that reads your `.env` configuration file, generates `credentials.json` (the **Supabase**, **Mistral**, and **SMTP** credentials, filled with the real values from `.env`), and updates the credential IDs inside both workflow JSON files to keep them aligned.
+* **`credentials.json`**: Generated locally by `update_credentials.py`. It contains your real keys, so it is gitignored and never committed.
+* **`launch.sh`**: The one-click entry point. It runs the credentials updater, spins up the Docker containers, automatically imports the generated credentials, and imports the workflows into n8n.
+* **`export.sh`**: Exports every workflow from the running n8n instance back into the project folder (`n8n export:workflow --backup`), to save changes made in the n8n UI.
 
 ---
 
@@ -79,6 +80,7 @@ MISTRAL_KEY=your_mistral_api_key
 # ─── SMTP/Email Settings (Automated Setup) ───
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
+# SMTP_USER is also the sender address of the digest e-mails
 SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_16_character_app_password
 SMTP_SECURE=true
